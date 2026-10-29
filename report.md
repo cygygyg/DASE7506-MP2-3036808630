@@ -156,12 +156,14 @@ development proxy, not a substitute for test.
 | Centred embedding + logistic (no integer filter) | 91.35% | 80.51% | 61.6% |
 | + integer-answer filter (baseline) | 92.11% | 80.73% | 62.3% |
 | Answer-debiased ranker \(A\) | 92.98% | 82.23% | 67.5% |
-| Retrieval verifier \(K\) alone | 88.85% | 72.59% | 50.3% |
+| Retrieval verifier \(K\) alone | 88.22% | 72.59% | 50.3% |
 | **Blend \(0.82A+0.18K\) (final)** | **93.23%** | **84.37%** | **70.2%** |
 
-The integer filter removes about 1.8% of test choices and prevents the scorer from ever
-seeing an answer that cannot match an integer reference. The baseline in
-`submission_baseline.py` already includes it.
+The integer filter removes about 9.6% of test candidates (5.9% unparseable, 3.7% fractional)
+and prevents the scorer from ever seeing an answer that cannot match an integer reference.
+Its direct accuracy gain over the unfiltered baseline is small (+0.22 points), but it also
+makes the answer-group patterns cleaner. The baseline in `submission_baseline.py` already
+includes it.
 
 ### 3.2 Per-difficulty breakdown (test)
 
