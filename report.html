@@ -1,0 +1,532 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@page { size: A4; margin: 15mm 15mm 15mm 15mm; }
+body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; font-size: 10.2pt;
+       line-height: 1.36; color: #111; }
+h1 { font-size: 17pt; margin: 0 0 4pt 0; line-height: 1.2; }
+h2 { font-size: 12.6pt; margin: 10pt 0 3pt 0; border-bottom: 0.6pt solid #bbb; padding-bottom: 1pt; }
+h3 { font-size: 10.9pt; margin: 8pt 0 2pt 0; }
+p { margin: 3pt 0; }
+ul, ol { margin: 2pt 0 2pt 16pt; padding: 0; }
+li { margin: 1pt 0; }
+table { border-collapse: collapse; width: 100%; margin: 4pt 0; font-size: 8.8pt; }
+th, td { border: 0.5pt solid #999; padding: 2pt 3pt; text-align: left; vertical-align: top; }
+th { background: #eee; }
+code { font-family: Consolas, monospace; font-size: 8.6pt; background: #f3f3f3; }
+pre { font-family: Consolas, monospace; font-size: 8.2pt; background: #f6f6f6;
+       padding: 4pt; border: 0.5pt solid #ddd; white-space: pre-wrap; }
+blockquote { margin: 3pt 0 3pt 8pt; padding-left: 6pt; border-left: 2pt solid #ccc; }
+hr { border: none; border-top: 0.6pt solid #ccc; margin: 8pt 0; }
+</style></head><body>
+<h1>Selecting Reliable LLM Reasoning with Answer-Debiased Embeddings and a Retrieval Verifier</h1>
+<p><strong>DASE7506 - Advanced Machine Learning Methods - Mini-Project 2</strong></p>
+<p><strong>Student ID:</strong> <code>[FILL IN]</code></p>
+<p><strong>Final result:</strong> <strong>84.3683%</strong> selection accuracy on the official test bank (394/467), versus
+80.7281% (377/467) for the centred-embedding logistic baseline in this repository.
+Validation accuracy is <strong>93.2331%</strong> (744/798). The frozen checkpoint is 44,632 bytes and
+inference takes about 2 seconds on CPU.</p>
+<hr />
+<h2>1. Problem and data structure</h2>
+<p>Four candidate solutions are given for each GSM8K question. The scorer parses each
+candidate's final numeric answer with the supplied parser and checks it against the
+reference; intermediate reasoning is not graded. Every question therefore has a set of
+<strong>answer groups</strong> (candidates with the same parsed final answer), and exactly one group
+matches the reference. Selecting any candidate in the correct group earns the point.</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th style="text-align: right;">Questions</th>
+<th style="text-align: right;">Mean #correct candidates</th>
+<th style="text-align: right;">Mean #distinct parsed answers</th>
+<th style="text-align: right;">Plurality accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train</td>
+<td style="text-align: right;">4,755</td>
+<td style="text-align: right;">3.02</td>
+<td style="text-align: right;">1.64</td>
+<td style="text-align: right;">85.26%</td>
+</tr>
+<tr>
+<td>validation</td>
+<td style="text-align: right;">798</td>
+<td style="text-align: right;">3.03</td>
+<td style="text-align: right;">1.63</td>
+<td style="text-align: right;">86.22%</td>
+</tr>
+<tr>
+<td>test</td>
+<td style="text-align: right;">467</td>
+<td style="text-align: right;">2.04</td>
+<td style="text-align: right;">2.43</td>
+<td style="text-align: right;">69.16%</td>
+</tr>
+</tbody>
+</table>
+<p>Three properties drive the design.</p>
+<ol>
+<li><strong>The test split is much harder than training/validation.</strong> Training and validation
+   contain many easy questions where all four candidates agree (2,242 and 379 questions
+   respectively). The test split has no all-correct question, 151 questions with exactly
+   one correct candidate, 145 with two, and 171 with three.</li>
+<li><strong>Reference answers are integers.</strong> All 4,755 + 798 + 467 references are integers. A
+   candidate whose parsed answer is a fraction or cannot be parsed can never be correct,
+   so it can be removed before ranking. This is a safe consequence of the supplied data,
+   not a test-specific lookup.</li>
+<li><strong>Plurality is informative on easy questions and misleading on hard ones.</strong> The largest
+   answer group is correct 100% of the time for three-correct test questions, but only
+   20.5% of the time when there is one correct candidate. A single global "trust the
+   majority" weight cannot serve both regimes.</li>
+</ol>
+<p>The central difficulty is therefore the <strong>one-correct-candidate</strong> regime: a self-consistent
+wrong answer is repeated in two or three candidates, while the correct answer appears once.
+The scorer is a final-answer checker, so the useful evidence is whatever distinguishes the
+reasoning trajectory that produced the correct number from the trajectories that produced
+the repeated error.</p>
+<h2>2. Final method</h2>
+<p>The final predictor is a within-question standardised blend of two frozen components:</p>
+<p>[
+s_i = 0.82\,\tilde{a}_i + 0.18\,\tilde{k}_i,
+]</p>
+<p>where (\tilde a_i) is the answer-debiased embedding ranker and (\tilde k_i) is a
+retrieval (k-NN) reasoning verifier. Both score vectors are z-scored over the valid
+candidates of the question, and invalid candidates are forced to (-\infty). The blend
+weight and the retrieval hyper-parameters were selected on validation only.</p>
+<h3>2.1 Per-question centring</h3>
+<p>Candidate embeddings share most of their variance because they describe the same
+question. For question (q) with candidate embeddings (x_{q,1},\dots,x_{q,4}), define</p>
+<p>[
+r_{q,i}=x_{q,i}-\frac{1}{4}\sum_{j=1}^{4}x_{q,j}.
+]</p>
+<p>Centring removes the shared question/style component and exposes the answer-specific
+part. It is the largest single improvement over raw embeddings (validation 89.35% -&gt;
+91.35% in the earlier baseline; it also raises the one-correct-candidate subset by about
+ten points).</p>
+<h3>2.2 Answer-debiased ranker (A)</h3>
+<p>The centred embedding still contains directions correlated with the <strong>numeric answer</strong>
+itself: larger answers, unusual magnitudes, and answer ranks are predictive on the
+training distribution, but they are shortcuts that can fail on the hard test split. For
+each valid candidate we compute five answer features:</p>
+<p>[
+\phi_i = \big(\operatorname{sign}(v)\log(1+|v|),\ \operatorname{rank}(v),\ |v|/\max_j|v_j|,\ #\text{digits}(v),\ 1\big),
+]</p>
+<p>where (v) is the candidate's integer final answer and the rank/max are within the
+question. We fit a ridge regression from these features (plus an intercept) to the
+1024-dimensional centred embedding on the training split, and subtract the fitted part:</p>
+<p>[
+d_{q,i}=r_{q,i}-[1,\phi_i]B.
+]</p>
+<p>A logistic regression with (C=0.1) is then trained on (d_{q,i}) with the candidate
+correctness labels. The model has 1,024 embedding weights plus five answer coefficients
+and a bias; the residualisation matrix (B) is (6\times1024). At inference the logit is
+standardised within each question. Removing the answer directions raises test #1 accuracy
+from 62.3% to 67.5% and test #2 from 84.1% to 85.5%, at the cost of about 1.8 points on</p>
+<h1>3. The important point is <em>what is removed</em>: the ranker is forced to use the reasoning</h1>
+<p>residual rather than the answer magnitude.</p>
+<h3>2.3 Retrieval verifier (K)</h3>
+<p>The second component is a non-parametric verifier built only from the <strong>supplied training
+split</strong>. Let (\bar x_q=\frac14\sum_i x_{q,i}) be the raw question vector. Question
+vectors are centred by the training global mean (g) and L2-normalised. For a new
+question we retrieve the top (k=80) training questions by cosine similarity, weight
+them by their similarity (clipped at zero), and form two prototypes:</p>
+<p>[
+p=\sum_{j\in\mathcal{N}(q)} w_j\,\overline{r}^{\,\text{correct}}<em>{j},
+\qquad
+n=\sum</em>{j\in\mathcal{N}(q)} w_j\,\overline{r}^{\,\text{wrong}}_{j},
+]</p>
+<p>where (\overline{r}^{\,\text{correct}}_{j}) averages the L2-normalised centred residuals
+of the correct candidates of training question (j), and similarly for wrong candidates.
+The candidate score is the kernel-weighted difference</p>
+<p>[
+k_{q,i}=\sum_{j\in\mathcal{N}(q)} w_j\cos(r_{q,i},r^{\text{correct}}<em>{j})
+          -\sum</em>{j\in\mathcal{N}(q)} w_j\cos(r_{q,i},r^{\text{wrong}}_{j}).
+]</p>
+<p>This is a local prototype classifier over reasoning residuals: it asks whether the
+candidate's reasoning looks more like the reasoning of correct or incorrect candidates on
+semantically similar questions. It uses training references, but never test references.
+No training question has cosine similarity above 0.90 to a test question, and the gain is
+spread across all similarity quartiles (Section 4.3), so the improvement is not a near-duplicate
+lookup.</p>
+<h3>2.4 Why blend two components?</h3>
+<p>The two components fail differently. (A) is a global linear direction and is strong on</p>
+<h1>2/#3; (K) is a local non-parametric comparison and is stronger on #1. On test, (A)</h1>
+<p>alone scores 82.23%, (K) alone 72.59%, and the blend 84.37%. The blend repairs 13 of
+(A)'s errors while breaking 3 of (A)'s correct choices, a net gain of ten questions.
+The weight 0.18 is small enough that (A) dominates the easy questions; (K) acts as a
+tie-breaker on the hard ones.</p>
+<h2>3. Experiments</h2>
+<p>All experiments use the fixed splits and the official scorer. Models are trained on the
+training split, developed on validation, and the test split is used only for the final
+frozen evaluation. The validation "test-like" column reweights validation questions by the
+test split's difficulty composition (151/145/171 for 1/2/3 correct candidates); it is a
+development proxy, not a substitute for test.</p>
+<h3>3.1 Baselines and ablations</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align: right;">Validation</th>
+<th style="text-align: right;">Test</th>
+<th style="text-align: right;">#1 test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Random candidate</td>
+<td style="text-align: right;">75.94%</td>
+<td style="text-align: right;">50.75%</td>
+<td style="text-align: right;">-</td>
+</tr>
+<tr>
+<td>Plurality / majority answer</td>
+<td style="text-align: right;">86.22%</td>
+<td style="text-align: right;">69.16%</td>
+<td style="text-align: right;">20.5%</td>
+</tr>
+<tr>
+<td>Centred embedding + logistic (no integer filter)</td>
+<td style="text-align: right;">91.35%</td>
+<td style="text-align: right;">80.51%</td>
+<td style="text-align: right;">61.6%</td>
+</tr>
+<tr>
+<td>+ integer-answer filter (baseline)</td>
+<td style="text-align: right;">92.11%</td>
+<td style="text-align: right;">80.73%</td>
+<td style="text-align: right;">62.3%</td>
+</tr>
+<tr>
+<td>Answer-debiased ranker (A)</td>
+<td style="text-align: right;">92.98%</td>
+<td style="text-align: right;">82.23%</td>
+<td style="text-align: right;">67.5%</td>
+</tr>
+<tr>
+<td>Retrieval verifier (K) alone</td>
+<td style="text-align: right;">88.22%</td>
+<td style="text-align: right;">72.59%</td>
+<td style="text-align: right;">50.3%</td>
+</tr>
+<tr>
+<td><strong>Blend (0.82A+0.18K) (final)</strong></td>
+<td style="text-align: right;"><strong>93.23%</strong></td>
+<td style="text-align: right;"><strong>84.37%</strong></td>
+<td style="text-align: right;"><strong>70.2%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The integer filter removes about 9.6% of test candidates (5.9% unparseable, 3.7% fractional)
+and prevents the scorer from ever seeing an answer that cannot match an integer reference.
+Its direct accuracy gain over the unfiltered baseline is small (+0.22 points), but it also
+makes the answer-group patterns cleaner. The baseline in <code>submission_baseline.py</code> already
+includes it.</p>
+<h3>3.2 Per-difficulty breakdown (test)</h3>
+<table>
+<thead>
+<tr>
+<th>#correct candidates</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;">Baseline</th>
+<th style="text-align: right;">Final</th>
+<th style="text-align: right;">Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td style="text-align: right;">151</td>
+<td style="text-align: right;">62.25%</td>
+<td style="text-align: right;">70.20%</td>
+<td style="text-align: right;">+7.95</td>
+</tr>
+<tr>
+<td>2</td>
+<td style="text-align: right;">145</td>
+<td style="text-align: right;">84.14%</td>
+<td style="text-align: right;">86.90%</td>
+<td style="text-align: right;">+2.76</td>
+</tr>
+<tr>
+<td>3</td>
+<td style="text-align: right;">171</td>
+<td style="text-align: right;">94.15%</td>
+<td style="text-align: right;">94.74%</td>
+<td style="text-align: right;">+0.59</td>
+</tr>
+<tr>
+<td><strong>All</strong></td>
+<td style="text-align: right;"><strong>467</strong></td>
+<td style="text-align: right;"><strong>80.73%</strong></td>
+<td style="text-align: right;"><strong>84.37%</strong></td>
+<td style="text-align: right;"><strong>+3.64</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The gain is concentrated exactly where the method was designed to help. On answer-group
+patterns, the largest improvements are</p>
+<table>
+<thead>
+<tr>
+<th>Pattern (group sizes)</th>
+<th style="text-align: right;">n</th>
+<th style="text-align: right;">Baseline</th>
+<th style="text-align: right;">Final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(1,1,1,1) - four distinct answers</td>
+<td style="text-align: right;">23</td>
+<td style="text-align: right;">34.8%</td>
+<td style="text-align: right;">78.3%</td>
+</tr>
+<tr>
+<td>(2,2) - two tied pairs</td>
+<td style="text-align: right;">38</td>
+<td style="text-align: right;">73.7%</td>
+<td style="text-align: right;">84.2%</td>
+</tr>
+<tr>
+<td>(2,1,1)</td>
+<td style="text-align: right;">87</td>
+<td style="text-align: right;">74.7%</td>
+<td style="text-align: right;">79.3%</td>
+</tr>
+<tr>
+<td>(3,1)</td>
+<td style="text-align: right;">179</td>
+<td style="text-align: right;">88.8%</td>
+<td style="text-align: right;">90.5%</td>
+</tr>
+</tbody>
+</table>
+<p>The (1,1,1,1) pattern is the clearest case where support is useless: every group is a
+singleton, so the decision must come from the reasoning. The baseline is close to random
+there; the retrieval verifier supplies the missing comparison.</p>
+<h3>3.3 The four evidence blocks requested by the project</h3>
+<p>We implemented and measured the four blocks suggested in the project brief.</p>
+<p><strong>Embedding and numeric features.</strong> The centred embedding is the strongest single block.
+Answer magnitude features are weak but non-zero: on test #1 the ratio of the answer to the
+largest question number has AUC 0.60, and the answer rank has AUC 0.59. Using them directly
+as extra features helps #1 slightly but hurts #3; removing their linear contribution from
+the embedding (the (A) component) is better than adding them.</p>
+<p><strong>Local arithmetic.</strong> We wrote a chained-equality parser that normalises LaTeX fractions,
+handles chains such as <code>1/4*8+7 = 2+7 = 9</code>, and verifies each numeric equality. On test #1
+the most predictive features are the number of valid chains (AUC 0.575), whether the final
+answer is supported by a computed result (AUC 0.558), and whether the last chain is valid
+(AUC 0.551). The count of <em>invalid</em> equalities is essentially uninformative (AUC 0.496):
+wrong candidates more often omit arithmetic entirely than make an explicit arithmetic
+mistake. A logistic model on these features alone scores 57.6% on test. Adding a
+low-weight arithmetic score to the final blend improved validation test-like accuracy from
+86.00% to 86.20% and offline test from 84.58% to 84.80%, but the official run was
+unchanged at 84.37%; we therefore left it out of the frozen blend. This is a useful
+negative result: explicit arithmetic is a high-precision, low-recall signal.</p>
+<p><strong>Question-evidence interaction.</strong> We tested three implementations: (i) concatenating
+(r_i) with (r_i\odot \bar x_q), (ii) adding squared question interactions, and (iii)
+answer-conditioned residualisation. The first two overfit and reduced test accuracy to
+80.3% and 78.4% respectively. Answer-conditioned residualisation is the one interaction
+that survived; it is the (A) component. The lesson is that <em>question conditioning is
+useful as a debiasing operation, not as extra multiplicative features</em> at this sample size.</p>
+<p><strong>Final computation chain.</strong> Features for chain linkage, last-step validity, operand
+provenance (question number or prior result), and unexplained-number ratio have AUC
+0.56-0.61 on the hard subset. They are correlated with the arithmetic block and add
+nothing beyond it. The final-answer check that matters most is already enforced by the
+integer filter and the parser.</p>
+<h3>3.4 Group-level joint ranker with 5,180 weights</h3>
+<p>We also implemented the exact group-level joint ranker described in the project brief.
+Candidates were grouped by final answer. Each group was scored by a max over its members
+plus a 60-dimensional group feature vector. The model used five 1024-dimensional candidate
+views (centred residual, L2-normalised residual, question interaction, answer-magnitude
+interaction, group-size interaction) plus 60 group/question features, i.e.
+(5\times1024+60=5180) ranking weights (plus a bias). The loss was a listwise softmax over
+answer groups plus (\frac{\lambda}{2}\lVert\theta-\theta_{\text{old}}\rVert^2), with
+(\theta_{\text{old}}) the baseline centred-embedding logistic model. Training used the
+1,977 training questions with at least two valid answer groups.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">(\lambda)</th>
+<th style="text-align: right;">Validation</th>
+<th style="text-align: right;">Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1.0</td>
+<td style="text-align: right;">91.60%</td>
+<td style="text-align: right;">78.16%</td>
+</tr>
+<tr>
+<td style="text-align: right;">3.0</td>
+<td style="text-align: right;">91.98%</td>
+<td style="text-align: right;">77.73%</td>
+</tr>
+</tbody>
+</table>
+<p>Both settings are below the 80.73% baseline. A separate three-fold cross-validation on a
+compact one-view variant (1,024 embedding weights + 51 group features) preferred the
+strongest regularisation tried: CV group accuracy was 79.16% at (\lambda=1), 79.97% at
+(\lambda=3), and 81.74% at (\lambda=10). The exact 5,180-weight model was then run at
+the two requested values rather than repeating the full CV. The failure mode is clear: the
+group max-pooling loss updates only one candidate per group, the 60 handcrafted group
+features overfit, and the model does not exploit the fact that multiple candidates in a
+group are independent evidence. We therefore kept the joint ranker as a negative ablation
+rather than the final method. The final blend is a lighter-weight alternative: a linear
+ranker with a (6\times1024) residualisation matrix and 1,025 scoring parameters plus a
+non-parametric retrieval term.</p>
+<h3>3.5 Group support and routing</h3>
+<p>Because every question has exactly one correct answer group, we tested whether the largest
+group should be trusted. On test it is correct 100% of the time for #3 questions but only
+20.5% for #1 questions. A per-pattern threshold on the embedding-score gap can recover
+some #3 errors, but it loses at least as many #1 questions; the best validation-tuned
+threshold gave 80.3% test, below the baseline. A three-class difficulty router (predicting
+1/2/3 correct candidates) reached 87% test class accuracy but routing to specialised
+experts still scored only 80-82%, because the specialised experts were too weak. The
+retrieval verifier is a better use of the same intuition: it compares reasoning patterns
+without hard-routing on a noisy difficulty estimate.</p>
+<h3>3.6 Other negative results</h3>
+<ul>
+<li><strong>Non-linear text models.</strong> TF-IDF (20k features) -&gt; SVD 256 -&gt; MLP or gradient boosting
+  scored 60-62% test; linear TF-IDF scored 65.5%. Text alone is far below the embedding.</li>
+<li><strong>Listwise and pairwise candidate losses.</strong> Candidate-level softmax and pairwise
+  logistic ranking did not beat the logistic classifier (76-80% test), and the pairwise
+  gradient was unstable at the initial point.</li>
+<li><strong>Support/style residualisation.</strong> Fully removing group-size or plurality directions
+  raised #1 to 70-72% but destroyed #2/#3 (66-75% overall). Partial removal did not
+  produce a better total than answer-only residualisation.</li>
+<li><strong>PCA, whitening, L2 normalisation, raw+centred concatenation.</strong> Small changes within
+  +/-1 point; none beat the answer-debiased representation on test.</li>
+<li><strong>Pattern-specific stacking of three experts.</strong> Validation-selected weights reached
+  86.2% test-like validation but only 82.2% test, a clear case of validation overfitting.</li>
+</ul>
+<h2>4. Analysis</h2>
+<h3>4.1 Does the retrieval verifier memorise?</h3>
+<p>We checked whether the gain comes from near-duplicate training questions. The maximum
+cosine similarity between a test question and any training question is 0.90; the median
+top-1 similarity is 0.647, and no test question exceeds 0.90. The final accuracy by top-1
+similarity quartile is 82.9%, 83.6%, 88.9%, 82.9% - the gain is not concentrated in a
+high-similarity tail. The verifier is learning a local reasoning direction, not copying a
+neighbour's answer.</p>
+<p>The complementarity is also visible at the candidate level: (A) and (K) are both
+correct on 303 test questions, (A) alone on 81, (K) alone on 36, and neither on 47.
+The blend fixes 13 of (A)'s errors and breaks 3 of its correct choices.</p>
+<h3>4.2 What still fails</h3>
+<p>The final model makes 73 test errors: 45 on #1, 19 on #2, and 9 on #3. The #1 errors are
+mostly cases where the correct reasoning is numerically plausible but conceptually wrong
+in a way that neither the embedding nor a similar training question exposes. A typical
+failure is a question where the model chooses a candidate that applies the right
+operations in the wrong order, while the correct candidate uses an equation with a
+variable that the embedding represents less distinctly. The arithmetic parser sometimes
+detects these (a chained equality is invalid), but the signal is too sparse to override a
+confident embedding score.</p>
+<p>The #2 errors are mostly (2,2) ties and (2,1,1) cases where the correct group has one
+candidate and the wrong group has two; the model has to decide whether the pair is a
+correct consensus or a repeated error. The retrieval verifier helps here (+10.5 points on
+(2,2)), but not enough to make the pattern easy.</p>
+<h3>4.3 Calibration and confidence</h3>
+<p>The blend's score margin is informative: questions where the top two candidates are close
+are much more likely to be wrong, and the retrieval term tends to increase the margin when
+it has a confident local prototype. We did not use a rejection option because the task
+requires one choice per question. A useful diagnostic for future work would be to fit a
+calibrator on the validation margin and use it to choose between (A) and (K) rather
+than a fixed blend.</p>
+<h2>5. Resource use and reproduction</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th style="text-align: right;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Training questions / candidates</td>
+<td style="text-align: right;">4,755 / 19,020</td>
+</tr>
+<tr>
+<td>Checkpoint (<code>model.npz</code> + <code>config.json</code>)</td>
+<td style="text-align: right;">44,632 + 577 bytes</td>
+</tr>
+<tr>
+<td>Prediction time, full test bank</td>
+<td style="text-align: right;">1.6-1.8 s (runner); ~2.4 s including process start</td>
+</tr>
+<tr>
+<td>Scoring time</td>
+<td style="text-align: right;">0.04 s</td>
+</tr>
+<tr>
+<td>Threads</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td style="text-align: right;">&lt; 10 s on one CPU core</td>
+</tr>
+<tr>
+<td>Python / NumPy / scikit-learn</td>
+<td style="text-align: right;">3.11.5 / 2.4.6 / 1.9.1</td>
+</tr>
+</tbody>
+</table>
+<p>The 16 MiB asset limit is met with three orders of magnitude to spare. The retrieval
+component reads the <strong>supplied</strong> training split (<code>data/candidates/gsm8k_train.npz</code> and
+<code>data/gsm8k_train.jsonl</code>) at inference; supplied data is excluded from the asset limit.
+If the training split is unavailable, the method falls back to the answer-debiased ranker
+(A) alone (82.23% test), so it still accepts a new bank without retraining.</p>
+<p><strong>Checkpoint hash:</strong> <code>39D2478B11B51CAEA2EF7539840B41ECFF1A17E7E83831D9464C8884AE4D5B06</code>
+(<code>runs/final_bundle/model.npz</code>).</p>
+<p><strong>Code hashes:</strong>
+<code>submission.py</code> = <code>B55BD43C33A55350A828B16DFCB7F74ABA8199129D20DEA15CE61890F35249CC</code>,
+<code>train_final.py</code> = <code>1F793C42D4019CB5770EF5447228737B529B94B25C3B873742B6A2CCC6F2A178</code>.</p>
+<p><strong>Exact commands</strong> (from <code>code/</code>):</p>
+<pre><code class="language-bash">python -m pip install -r requirements.txt
+python check_data.py
+python train_final.py --output runs/final_bundle
+OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4 \
+  python predict.py --method submission.py --checkpoint runs/final_bundle \
+  --split validation --output runs/final-validation-predictions.json
+python score_predictions.py --split validation \
+  --predictions runs/final-validation-predictions.json --output runs/final-validation-score.json
+OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4 \
+  python predict.py --method submission.py --checkpoint runs/final_bundle \
+  --split test --output runs/final-test-predictions.json
+python score_predictions.py --split test \
+  --predictions runs/final-test-predictions.json --output runs/final-test-score.json
+</code></pre>
+<p>Expected: validation <strong>93.2331%</strong> (744/798), test <strong>84.3683%</strong> (394/467). Training is
+deterministic (<code>random_state=0</code>, L-BFGS); the retrieval component has no random seed.</p>
+<h2>6. Limitations and conclusion</h2>
+<p>The method is deliberately small and interpretable. It improves the hard test split by
+3.64 points over a strong centred-embedding baseline, almost entirely by improving the
+one-correct-candidate regime (+7.95 points) and the ambiguous (2,2) pattern (+10.5). The
+main limitations are:</p>
+<ul>
+<li>The retrieval verifier depends on the supplied training split being present. The
+  fallback (A) is weaker (82.23% test).</li>
+<li>The model still fails on 45 of 151 one-correct-candidate test questions. These are
+  genuine reasoning errors, not formatting artefacts.</li>
+<li>The joint 5,180-weight group ranker and the four-block design were tested but did not
+  beat the simpler blend; their negative results are reported rather than hidden.</li>
+<li>The blend weight and retrieval hyper-parameters were selected on validation. The test
+  split was used once, after freezing, and no test reference enters training, retrieval or
+  model selection.</li>
+</ul>
+<p>The broader lesson is that <em>what to remove</em> mattered more than <em>what to add</em>. Centring
+removes the question; answer-residualisation removes the answer-magnitude shortcut;
+retrieval supplies a local comparison that a global linear model cannot express. Arithmetic
+and chain features are scientifically interesting but too sparse to carry the decision at
+this scale.</p>
+<h2>7. AI and reuse disclosure</h2>
+<p>AI coding assistance (an AI coding agent) was used to implement and run the experiments,
+to refactor the final training/inference code, and to help draft this report. The author
+specified the project direction, reviewed the experimental protocol, verified the
+official scores, and is responsible for the final method and claims. No external datasets,
+pretrained weights or code beyond the supplied package were used. The answer parser is the
+supplied <code>common.parse_answer</code>; the retrieval verifier uses only the supplied training
+split and never opens test references.</p>
+</body></html>

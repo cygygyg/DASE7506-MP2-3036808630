@@ -23,7 +23,8 @@ model.npz SHA-256:
 39D2478B11B51CAEA2EF7539840B41ECFF1A17E7E83831D9464C8884AE4D5B06
 
 Report:
-https://github.com/<YOUR-GITHUB-USER>/<YOUR-REPO>/blob/main/report.md
+https://github.com/<YOUR-GITHUB-USER>/<YOUR-REPO>/blob/main/report.pdf
+(Markdown source: .../blob/main/report.md)
 
 Reproduction:
 https://github.com/<YOUR-GITHUB-USER>/<YOUR-REPO>/blob/main/REPRODUCE.md

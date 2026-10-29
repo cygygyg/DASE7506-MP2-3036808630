@@ -1,6 +1,6 @@
 # Selecting Reliable LLM Reasoning with Answer-Debiased Embeddings and a Retrieval Verifier
 
-**DASE7506 · Advanced Machine Learning Methods · Mini-Project 2**
+**DASE7506 - Advanced Machine Learning Methods - Mini-Project 2**
 
 **Student ID:** `[FILL IN]`
 
@@ -69,7 +69,7 @@ r_{q,i}=x_{q,i}-\frac{1}{4}\sum_{j=1}^{4}x_{q,j}.
 \]
 
 Centring removes the shared question/style component and exposes the answer-specific
-part. It is the largest single improvement over raw embeddings (validation 89.35% →
+part. It is the largest single improvement over raw embeddings (validation 89.35% ->
 91.35% in the earlier baseline; it also raises the one-correct-candidate subset by about
 ten points).
 
@@ -127,7 +127,7 @@ This is a local prototype classifier over reasoning residuals: it asks whether t
 candidate's reasoning looks more like the reasoning of correct or incorrect candidates on
 semantically similar questions. It uses training references, but never test references.
 No training question has cosine similarity above 0.90 to a test question, and the gain is
-spread across all similarity quartiles (§4.3), so the improvement is not a near-duplicate
+spread across all similarity quartiles (Section 4.3), so the improvement is not a near-duplicate
 lookup.
 
 ### 2.4 Why blend two components?
@@ -151,7 +151,7 @@ development proxy, not a substitute for test.
 
 | Method | Validation | Test | #1 test |
 |---|---:|---:|---:|
-| Random candidate | 75.94% | 50.75% | — |
+| Random candidate | 75.94% | 50.75% | - |
 | Plurality / majority answer | 86.22% | 69.16% | 20.5% |
 | Centred embedding + logistic (no integer filter) | 91.35% | 80.51% | 61.6% |
 | + integer-answer filter (baseline) | 92.11% | 80.73% | 62.3% |
@@ -179,8 +179,8 @@ patterns, the largest improvements are
 
 | Pattern (group sizes) | n | Baseline | Final |
 |---|---:|---:|---:|
-| (1,1,1,1) — four distinct answers | 23 | 34.8% | 78.3% |
-| (2,2) — two tied pairs | 38 | 73.7% | 84.2% |
+| (1,1,1,1) - four distinct answers | 23 | 34.8% | 78.3% |
+| (2,2) - two tied pairs | 38 | 73.7% | 84.2% |
 | (2,1,1) | 87 | 74.7% | 79.3% |
 | (3,1) | 179 | 88.8% | 90.5% |
 
@@ -219,7 +219,7 @@ useful as a debiasing operation, not as extra multiplicative features* at this s
 
 **Final computation chain.** Features for chain linkage, last-step validity, operand
 provenance (question number or prior result), and unexplained-number ratio have AUC
-0.56–0.61 on the hard subset. They are correlated with the arithmetic block and add
+0.56-0.61 on the hard subset. They are correlated with the arithmetic block and add
 nothing beyond it. The final-answer check that matters most is already enforced by the
 integer filter and the parser.
 
@@ -260,22 +260,22 @@ group should be trusted. On test it is correct 100% of the time for #3 questions
 some #3 errors, but it loses at least as many #1 questions; the best validation-tuned
 threshold gave 80.3% test, below the baseline. A three-class difficulty router (predicting
 1/2/3 correct candidates) reached 87% test class accuracy but routing to specialised
-experts still scored only 80–82%, because the specialised experts were too weak. The
+experts still scored only 80-82%, because the specialised experts were too weak. The
 retrieval verifier is a better use of the same intuition: it compares reasoning patterns
 without hard-routing on a noisy difficulty estimate.
 
 ### 3.6 Other negative results
 
-- **Non-linear text models.** TF-IDF (20k features) → SVD 256 → MLP or gradient boosting
-  scored 60–62% test; linear TF-IDF scored 65.5%. Text alone is far below the embedding.
+- **Non-linear text models.** TF-IDF (20k features) -> SVD 256 -> MLP or gradient boosting
+  scored 60-62% test; linear TF-IDF scored 65.5%. Text alone is far below the embedding.
 - **Listwise and pairwise candidate losses.** Candidate-level softmax and pairwise
-  logistic ranking did not beat the logistic classifier (76–80% test), and the pairwise
+  logistic ranking did not beat the logistic classifier (76-80% test), and the pairwise
   gradient was unstable at the initial point.
 - **Support/style residualisation.** Fully removing group-size or plurality directions
-  raised #1 to 70–72% but destroyed #2/#3 (66–75% overall). Partial removal did not
+  raised #1 to 70-72% but destroyed #2/#3 (66-75% overall). Partial removal did not
   produce a better total than answer-only residualisation.
 - **PCA, whitening, L2 normalisation, raw+centred concatenation.** Small changes within
-  ±1 point; none beat the answer-debiased representation on test.
+  +/-1 point; none beat the answer-debiased representation on test.
 - **Pattern-specific stacking of three experts.** Validation-selected weights reached
   86.2% test-like validation but only 82.2% test, a clear case of validation overfitting.
 
@@ -286,7 +286,7 @@ without hard-routing on a noisy difficulty estimate.
 We checked whether the gain comes from near-duplicate training questions. The maximum
 cosine similarity between a test question and any training question is 0.90; the median
 top-1 similarity is 0.647, and no test question exceeds 0.90. The final accuracy by top-1
-similarity quartile is 82.9%, 83.6%, 88.9%, 82.9% — the gain is not concentrated in a
+similarity quartile is 82.9%, 83.6%, 88.9%, 82.9% - the gain is not concentrated in a
 high-similarity tail. The verifier is learning a local reasoning direction, not copying a
 neighbour's answer.
 
@@ -325,7 +325,7 @@ than a fixed blend.
 |---|---:|
 | Training questions / candidates | 4,755 / 19,020 |
 | Checkpoint (`model.npz` + `config.json`) | 44,632 + 577 bytes |
-| Prediction time, full test bank | 1.6–1.8 s (runner); ≈2.4 s including process start |
+| Prediction time, full test bank | 1.6-1.8 s (runner); ~2.4 s including process start |
 | Scoring time | 0.04 s |
 | Threads | 4 |
 | Training time | < 10 s on one CPU core |

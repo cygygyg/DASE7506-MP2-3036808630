@@ -22,6 +22,7 @@ model selection.
 | Path | Purpose |
 |---|---|
 | `report.md` | Project report (method, experiments, ablations, analysis, reproduction). |
+| `report.pdf` | Print-ready 6-page version of the report. |
 | `REPRODUCE.md` | Exact install / train / evaluate commands, environment and hashes. |
 | `code/submission.py` | Frozen inference (`predict(bank, arrays, checkpoint)`), pure NumPy. |
 | `code/train_final.py` | Trains the answer-debiased ranker and writes the checkpoint. |
