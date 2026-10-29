@@ -1,0 +1,16 @@
+{
+  "method": "answer-debiased centred-embedding ranker + kNN reasoning verifier",
+  "train_questions": 4755,
+  "train_candidates": 19020,
+  "train_pos_ratio": 0.7546267087276551,
+  "embedding_dim": 1024,
+  "answer_features": 5,
+  "C": 0.1,
+  "alpha": 0.18,
+  "beta": 0.0,
+  "knn_k": 80,
+  "knn_question_representation": "mean of four candidate embeddings, train-global centred, L2 normalised",
+  "knn_candidate_representation": "per-question-centred embedding, L2 normalised",
+  "uses_test_references": false,
+  "uses_training_references_at_inference": true
+}

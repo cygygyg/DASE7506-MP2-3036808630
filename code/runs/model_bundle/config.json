@@ -1,0 +1,7 @@
+{
+  "method": "centred-embedding-logreg",
+  "train_samples": 19020,
+  "train_pos_ratio": 0.7546267087276551,
+  "n_features": 1024,
+  "C": 1.0
+}
