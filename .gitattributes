@@ -1,0 +1,4 @@
+# Preserve the supplied data byte-for-byte: the official checker verifies
+# SHA-256 hashes, so Git must not convert line endings in data files.
+* text=auto
+**/data/** -text
