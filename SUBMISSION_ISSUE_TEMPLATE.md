@@ -5,7 +5,7 @@ Create that issue with your GitHub account; preparing the link alone does not su
 anything. Replace the placeholders below.
 
 ```markdown
-MP2 submission — <STUDENT ID>
+MP2 submission — 3036808630
 
 Score: 84.3683
 Split: test (467 questions, 394 correct)

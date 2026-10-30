@@ -2,7 +2,7 @@
 
 **DASE7506 - Advanced Machine Learning Methods - Mini-Project 2**
 
-**Student ID:** `[FILL IN]`
+**Student ID:** `3036808630`
 
 **Final result:** **84.3683%** selection accuracy on the official test bank (394/467), versus
 80.7281% (377/467) for the centred-embedding logistic baseline in this repository.

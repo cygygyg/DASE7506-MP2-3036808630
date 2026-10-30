@@ -1,6 +1,6 @@
 # DASE7506 MP2 — Selecting Reliable LLM Reasoning
 
-**Student ID:** `[FILL IN]`
+**Student ID:** `3036808630`
 
 **Final official test score:** **84.3683%** (394/467)
 **Official validation score:** **93.2331%** (744/798)
